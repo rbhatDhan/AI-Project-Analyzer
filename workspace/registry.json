@@ -125,5 +125,13 @@
       }
     },
     "parse_errors": []
+  },
+  "c47fb30eb97f": {
+    "project_id": "c47fb30eb97f",
+    "status": "embedding",
+    "created_at": "2026-08-25T14:41:07.221888+00:00",
+    "original_filename": "ai-project-analyzer-mvp (1).zip",
+    "updated_at": "2026-08-25T14:41:08.000729+00:00",
+    "chunk_count": 75
   }
 }

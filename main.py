@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 
 from api import architecture, chat, projects
+
 
 app = FastAPI(
     title="AI Project Analyzer & RAG Assistant",
@@ -10,9 +12,14 @@ app = FastAPI(
     version="0.1.0-mvp",
 )
 
-# Dev-friendly CORS: the bundled UI is served same-origin (see /ui below), but
-# this also lets you open static/index.html directly (file://) or host the
-# frontend elsewhere and point it at this API during development.
+
+# ---------------------------------------------------------
+# CORS
+# ---------------------------------------------------------
+# Dev-friendly CORS:
+# - The bundled UI is served same-origin at /ui.
+# - This also allows the API to be accessed from another
+#   frontend during development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,24 +28,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------
+# API Routers
+# ---------------------------------------------------------
 app.include_router(projects.router)
 app.include_router(chat.router)
 app.include_router(architecture.router)
 
-# Minimal UI: open http://localhost:8000/ui
-app.mount("/ui", StaticFiles(directory="static", html=True), name="ui")
+
+# ---------------------------------------------------------
+# Frontend / UI
+# ---------------------------------------------------------
+# Serves:
+#     /ui
+#
+# Example:
+#     http://localhost:8000/ui
+#
+# Vercel:
+#     https://your-app.vercel.app/ui
+app.mount(
+    "/ui",
+    StaticFiles(directory="static", html=True),
+    name="ui",
+)
 
 
+# ---------------------------------------------------------
+# Root Route
+# ---------------------------------------------------------
+# Automatically redirect the user from:
+#
+#     /
+#
+# to:
+#
+#     /ui
+#
+# Therefore opening:
+#     https://your-app.vercel.app/
+#
+# will directly open the frontend.
 @app.get("/")
 async def root():
-    return {
-        "status": "ok",
-        "ui": "GET /ui  (open this in a browser)",
-        "endpoints": {
-            "upload": "POST /projects/upload (multipart form field: file=<project.zip>)",
-            "status": "GET /projects/{project_id}",
-            "list": "GET /projects",
-            "ask": "POST /chat/ask {project_id, question}",
-            "architecture": "GET /architecture/{project_id}",
-        },
-    }
+    return RedirectResponse(url="/ui")
