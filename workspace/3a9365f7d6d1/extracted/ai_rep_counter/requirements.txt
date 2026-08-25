@@ -1,0 +1,14 @@
+# NOTE on mediapipe: the version originally pinned here (0.10.14) shipped
+# the legacy `mediapipe.solutions.pose` API. Current PyPI builds of
+# mediapipe (0.10.18+) removed that module entirely -- see
+# https://github.com/google-ai-edge/mediapipe/issues/6192 -- so this
+# project targets the modern `mediapipe.tasks` Pose Landmarker API instead
+# (see pose_landmark_enum.py and app.py for details) and installs whatever
+# current mediapipe your `pip` resolves, rather than a now-hard-to-obtain
+# old pin.
+opencv-python==4.10.0.84
+mediapipe
+numpy==1.26.4
+matplotlib==3.9.0
+pandas==2.2.2
+streamlit==1.37.0

@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Project Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#11161d; --border:#22293380; --border-solid:#232b36;
+    --text:#e6edf3; --dim:#8b949e; --accent:#5fd0a8; --accent-dim:#5fd0a833;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+    --err:#f0866b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:28px;gap:12px;flex-wrap:wrap}
+  h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.2px}
+  h1 span{color:var(--accent);font-family:var(--mono)}
+  .base-url{font-family:var(--mono);font-size:11px;color:var(--dim);background:var(--panel);border:1px solid var(--border-solid);
+    border-radius:6px;padding:5px 8px;width:220px}
+  .card{background:var(--panel);border:1px solid var(--border-solid);border-radius:10px;padding:18px 20px;margin-bottom:16px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 14px;font-weight:600}
+
+  /* upload */
+  #dropzone{border:1.5px dashed var(--border-solid);border-radius:8px;padding:26px;text-align:center;
+    color:var(--dim);font-size:13px;cursor:pointer;transition:border-color .15s,background .15s}
+  #dropzone:hover,#dropzone.drag{border-color:var(--accent);background:var(--accent-dim);color:var(--text)}
+  #dropzone strong{color:var(--text)}
+  #fileInput{display:none}
+
+  /* project picker */
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  select,input[type=text]{background:#0a0e13;border:1px solid var(--border-solid);color:var(--text);
+    border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:12.5px}
+  select{max-width:280px}
+  button{background:var(--accent);color:#08130f;border:none;border-radius:6px;padding:8px 14px;
+    font-weight:600;font-size:12.5px;cursor:pointer;font-family:var(--sans)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.ghost{background:transparent;border:1px solid var(--border-solid);color:var(--text)}
+
+  /* status pipeline */
+  .pipeline{display:flex;gap:6px;margin-top:16px;flex-wrap:wrap}
+  .step{font-family:var(--mono);font-size:10.5px;padding:4px 9px;border-radius:20px;border:1px solid var(--border-solid);
+    color:var(--dim)}
+  .step.active{color:#08130f;background:var(--accent);border-color:var(--accent)}
+  .step.done{color:var(--accent);border-color:var(--accent-dim)}
+  .step.failed{color:var(--err);border-color:var(--err)}
+  #statusLine{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:12px}
+  #errorLine{font-family:var(--mono);font-size:12px;color:var(--err);margin-top:8px;white-space:pre-wrap}
+
+  /* tabs */
+  .tabs{display:flex;gap:4px;margin-bottom:16px}
+  .tab{padding:7px 14px;border-radius:6px;font-size:12.5px;cursor:pointer;color:var(--dim);border:1px solid transparent}
+  .tab.active{color:var(--text);background:var(--panel);border-color:var(--border-solid)}
+  .panel{display:none}
+  .panel.active{display:block}
+
+  /* chat */
+  #chatLog{display:flex;flex-direction:column;gap:16px;margin-bottom:14px;max-height:520px;overflow-y:auto;padding-right:4px}
+  .msg-q{font-size:13.5px;font-weight:600;color:var(--text)}
+  .msg-a{font-size:13.5px;line-height:1.55;color:#d7dde3;white-space:pre-wrap;margin-top:6px}
+  .sources{margin-top:10px}
+  .sources summary{cursor:pointer;font-size:11px;color:var(--dim);font-family:var(--mono)}
+  .source-item{font-family:var(--mono);font-size:11px;color:var(--dim);padding:6px 0;border-top:1px solid var(--border)}
+  .source-item b{color:var(--text)}
+  .chat-input-row{display:flex;gap:8px}
+  .chat-input-row input{flex:1;padding:10px 12px}
+  .empty{color:var(--dim);font-size:12.5px;font-family:var(--mono)}
+
+  /* architecture */
+  #mermaidBox{background:#0a0e13;border:1px solid var(--border-solid);border-radius:8px;padding:16px;overflow:auto}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{font-family:var(--mono);font-size:11px;background:#0a0e13;border:1px solid var(--border-solid);
+    padding:3px 9px;border-radius:20px;color:var(--dim)}
+
+  .hidden{display:none !important}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:var(--border-solid);border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI Project Analyzer <span>/ rag assistant</span></h1>
+    <input id="baseUrl" class="base-url" type="text" value="" spellcheck="false" />
+  </header>
+
+  <!-- Upload -->
+  <div class="card">
+    <h2>1 · Upload project</h2>
+    <div id="dropzone">
+      Drop a <strong>.zip</strong> of your project here, or <strong>click to browse</strong>
+    </div>
+    <input id="fileInput" type="file" accept=".zip" />
+    <div class="row" style="margin-top:14px">
+      <span class="empty">or open an existing project:</span>
+      <select id="projectSelect"><option value="">— select —</option></select>
+      <button class="ghost" id="refreshBtn" type="button">Refresh list</button>
+    </div>
+    <div class="pipeline" id="pipeline"></div>
+    <div id="statusLine"></div>
+    <div id="errorLine"></div>
+  </div>
+
+  <!-- Main app, shown once a project is ready -->
+  <div id="app" class="hidden">
+    <div class="tabs">
+      <div class="tab active" data-tab="chat">Chat</div>
+      <div class="tab" data-tab="arch">Architecture</div>
+    </div>
+
+    <div class="panel active" id="panel-chat">
+      <div class="card">
+        <h2>Ask about this project</h2>
+        <div id="chatLog"><div class="empty">No questions yet. Try “How does authentication work?”</div></div>
+        <div class="chat-input-row">
+          <input id="chatInput" type="text" placeholder="Ask a question about the codebase…" />
+          <button id="askBtn" type="button">Ask</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-arch">
+      <div class="card">
+        <h2>Architecture</h2>
+        <div class="chips" id="archChips"></div>
+        <div id="mermaidBox"><div class="empty">Loading diagram…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+const $ = (id) => document.getElementById(id);
+const state = { projectId: null, pollTimer: null };
+
+// ---- base URL (defaults to same origin the page is served from) ----
+$('baseUrl').value = window.location.origin;
+const apiBase = () => $('baseUrl').value.replace(/\/$/, '');
+
+// ---- upload ----
+const dropzone = $('dropzone');
+const fileInput = $('fileInput');
+dropzone.addEventListener('click', () => fileInput.click());
+['dragover','dragenter'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) upload(f); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) upload(fileInput.files[0]); });
+
+async function upload(file) {
+  if (!file.name.toLowerCase().endsWith('.zip')) { showError('Only .zip files are accepted.'); return; }
+  showError('');
+  const fd = new FormData();
+  fd.append('file', file);
+  setStatusLine(`Uploading ${file.name}…`);
+  try {
+    const res = await fetch(`${apiBase()}/projects/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    state.projectId = data.project_id;
+    resetApp();
+    refreshProjectList(state.projectId);
+    pollStatus();
+  } catch (e) {
+    showError(`Upload error: ${e.message}. Is the backend running at ${apiBase()}?`);
+  }
+}
+
+// ---- project picker ----
+$('refreshBtn').addEventListener('click', () => refreshProjectList());
+$('projectSelect').addEventListener('change', (e) => {
+  if (!e.target.value) return;
+  state.projectId = e.target.value;
+  resetApp();
+  pollStatus();
+});
+
+async function refreshProjectList(selectId) {
+  try {
+    const res = await fetch(`${apiBase()}/projects`);
+    const list = await res.json();
+    const sel = $('projectSelect');
+    sel.innerHTML = '<option value="">— select —</option>';
+    list
+      .sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''))
+      .forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.project_id;
+        opt.textContent = `${p.project_id}  ·  ${p.original_filename || 'unnamed'}  ·  ${p.status}`;
+        sel.appendChild(opt);
+      });
+    if (selectId) sel.value = selectId;
+  } catch (e) {
+    showError(`Could not reach backend at ${apiBase()}.`);
+  }
+}
+
+// ---- status polling ----
+const STAGES = ['queued','extracting','analyzing','chunking','embedding','ready'];
+
+function renderPipeline(status) {
+  const failed = status === 'failed';
+  const idx = STAGES.indexOf(status);
+  $('pipeline').innerHTML = STAGES.map((s, i) => {
+    let cls = 'step';
+    if (failed) cls += i === 0 ? ' failed' : '';
+    else if (i < idx) cls += ' done';
+    else if (i === idx) cls += ' active';
+    return `<span class="${cls}">${s}</span>`;
+  }).join('');
+}
+
+function setStatusLine(text) { $('statusLine').textContent = text; }
+function showError(text) { $('errorLine').textContent = text || ''; }
+
+function resetApp() {
+  $('app').classList.add('hidden');
+  $('chatLog').innerHTML = '<div class="empty">No questions yet. Try “How does authentication work?”</div>';
+  $('mermaidBox').innerHTML = '<div class="empty">Loading diagram…</div>';
+  showError('');
+}
+
+async function pollStatus() {
+  clearTimeout(state.pollTimer);
+  if (!state.projectId) return;
+  try {
+    const res = await fetch(`${apiBase()}/projects/${state.projectId}`);
+    if (!res.ok) throw new Error('project not found');
+    const p = await res.json();
+    renderPipeline(p.status);
+    if (p.status === 'failed') {
+      setStatusLine(`Failed.`);
+      showError(p.error || 'Unknown error.');
+      return;
+    }
+    if (p.status === 'ready') {
+      setStatusLine(`Ready · ${p.chunk_count ?? '?'} chunks indexed.`);
+      $('app').classList.remove('hidden');
+      loadArchitecture();
+      return;
+    }
+    setStatusLine(`Status: ${p.status}…`);
+    state.pollTimer = setTimeout(pollStatus, 1800);
+  } catch (e) {
+    showError(`Lost connection while polling: ${e.message}`);
+  }
+}
+
+// ---- tabs ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    $(`panel-${tab.dataset.tab}`).classList.add('active');
+  });
+});
+
+// ---- chat ----
+$('askBtn').addEventListener('click', ask);
+$('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+
+async function ask() {
+  const input = $('chatInput');
+  const question = input.value.trim();
+  if (!question || !state.projectId) return;
+  input.value = '';
+  const log = $('chatLog');
+  if (log.querySelector('.empty')) log.innerHTML = '';
+
+  const block = document.createElement('div');
+  block.innerHTML = `<div class="msg-q">${escapeHtml(question)}</div><div class="msg-a">Thinking…</div>`;
+  log.appendChild(block);
+  log.scrollTop = log.scrollHeight;
+
+  $('askBtn').disabled = true;
+  try {
+    const res = await fetch(`${apiBase()}/chat/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: state.projectId, question }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+    const sourcesHtml = (data.sources || []).map(s => `
+      <div class="source-item"><b>${escapeHtml(s.file_path || '?')}</b>
+        ${s.symbol ? ' · ' + escapeHtml(s.symbol) : ''}
+        ${s.type ? ' · ' + escapeHtml(s.type) : ''}
+        ${s.line_start ? ` · L${s.line_start}-${s.line_end}` : ''}
+        ${typeof s.score === 'number' ? ' · score ' + s.score.toFixed(3) : ''}
+      </div>`).join('');
+
+    block.innerHTML = `
+      <div class="msg-q">${escapeHtml(question)}</div>
+      <div class="msg-a">${escapeHtml(data.answer)}</div>
+      <details class="sources"><summary>${(data.sources||[]).length} source${(data.sources||[]).length===1?'':'s'}</summary>${sourcesHtml}</details>
+    `;
+  } catch (e) {
+    block.innerHTML = `<div class="msg-q">${escapeHtml(question)}</div><div class="msg-a" style="color:var(--err)">Error: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    $('askBtn').disabled = false;
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+// ---- architecture ----
+async function loadArchitecture() {
+  try {
+    const res = await fetch(`${apiBase()}/architecture/${state.projectId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Request failed');
+
+    const s = data.analysis_summary || {};
+    const chips = [
+      ...(s.languages || []).map(l => `<span class="chip">${escapeHtml(l)}</span>`),
+      ...(s.frameworks || []).map(f => `<span class="chip">${escapeHtml(f)}</span>`),
+    ];
+    $('archChips').innerHTML = chips.join('') || '<span class="empty">No languages/frameworks detected.</span>';
+
+    const box = $('mermaidBox');
+    const id = 'mmd-' + Date.now();
+    box.innerHTML = `<div id="${id}"></div>`;
+    try {
+      const { svg } = await mermaid.render(id + '-svg', data.mermaid);
+      box.innerHTML = svg;
+    } catch (mErr) {
+      box.innerHTML = `<div class="empty">Could not render diagram.</div><pre style="font-size:11px;color:var(--dim)">${escapeHtml(data.mermaid)}</pre>`;
+    }
+  } catch (e) {
+    $('mermaidBox').innerHTML = `<div class="empty" style="color:var(--err)">Error loading architecture: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// initial load
+refreshProjectList();
+</script>
+</body>
+</html>

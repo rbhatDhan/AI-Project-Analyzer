@@ -1,0 +1,85 @@
+# =========================
+# Python
+# =========================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python virtual environment
+venv/
+.venv/
+env/
+.env/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =========================
+# Environment & Secrets
+# =========================
+
+.env
+.env.*
+!.env.example
+
+# =========================
+# AI / RAG / FAISS
+# =========================
+
+# Generated vector indexes / embeddings
+*.faiss
+*.index
+*.pkl
+*.pickle
+
+# RAG / uploaded/generated data
+data/
+uploads/
+processed/
+embeddings/
+
+# =========================
+# Logs
+# =========================
+
+*.log
+logs/
+
+# =========================
+# Testing / Coverage
+# =========================
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# =========================
+# IDE / Editors
+# =========================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS Files
+# =========================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Temporary Files
+# =========================
+
+*.tmp
+*.temp
+*.bak
+*.cache

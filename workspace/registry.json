@@ -1,0 +1,129 @@
+{
+  "cdeb5368d76d": {
+    "project_id": "cdeb5368d76d",
+    "status": "failed",
+    "created_at": "2026-08-25T14:04:16.499562+00:00",
+    "original_filename": "ai_rep_counter_v3.zip",
+    "updated_at": "2026-08-25T14:04:16.979646+00:00",
+    "chunk_count": 59,
+    "error": "RuntimeError: GEMINI_API_KEY is not set. Copy .env.example to .env and add your key from https://aistudio.google.com/apikey"
+  },
+  "3a9365f7d6d1": {
+    "project_id": "3a9365f7d6d1",
+    "status": "ready",
+    "created_at": "2026-08-25T14:07:46.074990+00:00",
+    "original_filename": "ai_rep_counter_v3.zip",
+    "updated_at": "2026-08-25T14:08:25.671712+00:00",
+    "chunk_count": 59,
+    "extract_stats": {
+      "extracted_files": 11,
+      "total_uncompressed_bytes": 66702
+    },
+    "analysis": {
+      "languages": {
+        "Python": {
+          "files": 9,
+          "percent": 100.0
+        }
+      },
+      "structure": [
+        "ai_rep_counter",
+        "ai_rep_counter/exercises"
+      ],
+      "dependencies": {
+        "pip": {
+          "opencv-python": "opencv-python==4.10.0.84",
+          "mediapipe": "mediapipe",
+          "numpy": "numpy==1.26.4",
+          "matplotlib": "matplotlib==3.9.0",
+          "pandas": "pandas==2.2.2",
+          "streamlit": "streamlit==1.37.0"
+        }
+      },
+      "frameworks": [
+        "Streamlit"
+      ],
+      "total_files_analyzed": 11,
+      "libraries": {
+        "cv": [
+          "MediaPipe",
+          "OpenCV"
+        ],
+        "data": [
+          "NumPy",
+          "Pandas"
+        ],
+        "ui": [
+          "Streamlit"
+        ],
+        "viz": [
+          "Matplotlib"
+        ]
+      }
+    },
+    "parse_errors": []
+  },
+  "a2841e9c1b17": {
+    "project_id": "a2841e9c1b17",
+    "status": "ready",
+    "created_at": "2026-08-25T14:13:50.098842+00:00",
+    "original_filename": "ai-project-analyzer-mvp (1).zip",
+    "updated_at": "2026-08-25T14:14:36.116088+00:00",
+    "chunk_count": 75,
+    "extract_stats": {
+      "extracted_files": 28,
+      "total_uncompressed_bytes": 62615
+    },
+    "analysis": {
+      "languages": {
+        "Python": {
+          "files": 24,
+          "percent": 96.0
+        },
+        "HTML": {
+          "files": 1,
+          "percent": 4.0
+        }
+      },
+      "structure": [
+        "backend",
+        "backend/ai",
+        "backend/analysis",
+        "backend/api",
+        "backend/core",
+        "backend/diagrams",
+        "backend/ingestion",
+        "backend/rag",
+        "backend/static"
+      ],
+      "dependencies": {
+        "pip": {
+          "fastapi": "fastapi==0.115.0",
+          "uvicorn": "uvicorn[standard]==0.30.6",
+          "python-multipart": "python-multipart==0.0.9",
+          "google-generativeai": "google-generativeai==0.8.3",
+          "faiss-cpu": "faiss-cpu==1.8.0",
+          "numpy": "numpy==1.26.4",
+          "pydantic": "pydantic==2.9.2",
+          "python-dotenv": "python-dotenv==1.0.1"
+        }
+      },
+      "frameworks": [
+        "FastAPI"
+      ],
+      "total_files_analyzed": 28,
+      "libraries": {
+        "ui": [
+          "FastAPI"
+        ],
+        "api": [
+          "Gemini API"
+        ],
+        "data": [
+          "NumPy"
+        ]
+      }
+    },
+    "parse_errors": []
+  }
+}
