@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>AI Project Analyzer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
   :root{
     --bg:#0d1117; --panel:#11161d; --border:#22293380; --border-solid:#232b36;
@@ -52,6 +54,9 @@
   #errorLine{font-family:var(--mono);font-size:12px;color:var(--err);margin-top:8px;white-space:pre-wrap}
 
   /* tabs */
+  .active-project-banner{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--dim);background:var(--panel);border:1px solid var(--border-solid);border-radius:6px;padding:8px 12px;margin-bottom:14px}
+  .active-project-banner b{color:var(--text);font-weight:600}
+  .active-project-banner .pid{color:var(--dim)}
   .tabs{display:flex;gap:4px;margin-bottom:16px}
   .tab{padding:7px 14px;border-radius:6px;font-size:12.5px;cursor:pointer;color:var(--dim);border:1px solid transparent}
   .tab.active{color:var(--text);background:var(--panel);border-color:var(--border-solid)}
@@ -61,7 +66,17 @@
   /* chat */
   #chatLog{display:flex;flex-direction:column;gap:16px;margin-bottom:14px;max-height:520px;overflow-y:auto;padding-right:4px}
   .msg-q{font-size:13.5px;font-weight:600;color:var(--text)}
-  .msg-a{font-size:13.5px;line-height:1.55;color:#d7dde3;white-space:pre-wrap;margin-top:6px}
+  .msg-a{font-size:13.5px;line-height:1.55;color:#d7dde3;margin-top:6px}
+  .msg-a p{margin:0 0 10px 0}
+  .msg-a p:last-child{margin-bottom:0}
+  .msg-a ul,.msg-a ol{margin:0 0 10px 20px;padding:0}
+  .msg-a li{margin-bottom:4px}
+  .msg-a code{font-family:var(--mono);background:var(--panel);padding:1px 5px;border-radius:4px;font-size:12.5px}
+  .msg-a pre{font-family:var(--mono);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px 12px;overflow-x:auto;margin:0 0 10px 0}
+  .msg-a pre code{background:none;padding:0}
+  .msg-a h1,.msg-a h2,.msg-a h3{font-size:13.5px;color:var(--text);margin:12px 0 6px 0}
+  .msg-a h1:first-child,.msg-a h2:first-child,.msg-a h3:first-child{margin-top:0}
+  .msg-a strong{color:var(--text)}
   .sources{margin-top:10px}
   .sources summary{cursor:pointer;font-size:11px;color:var(--dim);font-family:var(--mono)}
   .source-item{font-family:var(--mono);font-size:11px;color:var(--dim);padding:6px 0;border-top:1px solid var(--border)}
@@ -107,6 +122,8 @@
 
   <!-- Main app, shown once a project is ready -->
   <div id="app" class="hidden">
+    <div id="activeProjectBanner" class="active-project-banner"></div>
+
     <div class="tabs">
       <div class="tab active" data-tab="chat">Chat</div>
       <div class="tab" data-tab="arch">Architecture</div>
@@ -127,6 +144,7 @@
       <div class="card">
         <h2>Architecture</h2>
         <div class="chips" id="archChips"></div>
+        <div id="flowSelectRow" style="margin:10px 0"></div>
         <div id="mermaidBox"><div class="empty">Loading diagram…</div></div>
       </div>
     </div>
@@ -137,7 +155,14 @@
 mermaid.initialize({ startOnLoad: false, theme: 'dark' });
 
 const $ = (id) => document.getElementById(id);
-const state = { projectId: null, pollTimer: null };
+const state = { projectId: null, projectName: null, pollTimer: null };
+
+function renderProjectBanner() {
+  const el = $('activeProjectBanner');
+  if (!state.projectId) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = `Active project: <b>${escapeHtml(state.projectName || 'unnamed')}</b> <span class="pid">(${escapeHtml(state.projectId)})</span>`;
+}
 
 // ---- base URL (defaults to same origin the page is served from) ----
 $('baseUrl').value = window.location.origin;
@@ -163,6 +188,7 @@ async function upload(file) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Upload failed');
     state.projectId = data.project_id;
+    state.projectName = file.name;
     resetApp();
     refreshProjectList(state.projectId);
     pollStatus();
@@ -176,6 +202,7 @@ $('refreshBtn').addEventListener('click', () => refreshProjectList());
 $('projectSelect').addEventListener('change', (e) => {
   if (!e.target.value) return;
   state.projectId = e.target.value;
+  state.projectName = e.target.selectedOptions[0]?.dataset.filename || null;
   resetApp();
   pollStatus();
 });
@@ -191,6 +218,7 @@ async function refreshProjectList(selectId) {
       .forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.project_id;
+        opt.dataset.filename = p.original_filename || '';
         opt.textContent = `${p.project_id}  ·  ${p.original_filename || 'unnamed'}  ·  ${p.status}`;
         sel.appendChild(opt);
       });
@@ -223,6 +251,7 @@ function resetApp() {
   $('chatLog').innerHTML = '<div class="empty">No questions yet. Try “How does authentication work?”</div>';
   $('mermaidBox').innerHTML = '<div class="empty">Loading diagram…</div>';
   showError('');
+  renderProjectBanner();
 }
 
 async function pollStatus() {
@@ -232,6 +261,8 @@ async function pollStatus() {
     const res = await fetch(`${apiBase()}/projects/${state.projectId}`);
     if (!res.ok) throw new Error('project not found');
     const p = await res.json();
+    if (p.original_filename) state.projectName = p.original_filename;
+    renderProjectBanner();
     renderPipeline(p.status);
     if (p.status === 'failed') {
       setStatusLine(`Failed.`);
@@ -298,7 +329,7 @@ async function ask() {
 
     block.innerHTML = `
       <div class="msg-q">${escapeHtml(question)}</div>
-      <div class="msg-a">${escapeHtml(data.answer)}</div>
+      <div class="msg-a">${DOMPurify.sanitize(marked.parse(data.answer || ''))}</div>
       <details class="sources"><summary>${(data.sources||[]).length} source${(data.sources||[]).length===1?'':'s'}</summary>${sourcesHtml}</details>
     `;
   } catch (e) {
@@ -310,11 +341,26 @@ async function ask() {
 }
 
 // ---- architecture ----
+state.archData = null;
+
+async function renderMermaid(source) {
+  const box = $('mermaidBox');
+  const id = 'mmd-' + Date.now();
+  box.innerHTML = `<div id="${id}"></div>`;
+  try {
+    const { svg } = await mermaid.render(id + '-svg', source);
+    box.innerHTML = svg;
+  } catch (mErr) {
+    box.innerHTML = `<div class="empty">Could not render diagram.</div><pre style="font-size:11px;color:var(--dim)">${escapeHtml(source)}</pre>`;
+  }
+}
+
 async function loadArchitecture() {
   try {
     const res = await fetch(`${apiBase()}/architecture/${state.projectId}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Request failed');
+    state.archData = data;
 
     const s = data.analysis_summary || {};
     const chips = [
@@ -323,14 +369,24 @@ async function loadArchitecture() {
     ];
     $('archChips').innerHTML = chips.join('') || '<span class="empty">No languages/frameworks detected.</span>';
 
-    const box = $('mermaidBox');
-    const id = 'mmd-' + Date.now();
-    box.innerHTML = `<div id="${id}"></div>`;
-    try {
-      const { svg } = await mermaid.render(id + '-svg', data.mermaid);
-      box.innerHTML = svg;
-    } catch (mErr) {
-      box.innerHTML = `<div class="empty">Could not render diagram.</div><pre style="font-size:11px;color:var(--dim)">${escapeHtml(data.mermaid)}</pre>`;
+    const flows = data.flows || [];
+    const selectRow = $('flowSelectRow');
+    if (flows.length) {
+      const options = [
+        `<option value="__overview__">Overview (tech stack)</option>`,
+        ...flows.map((f, i) => `<option value="${i}">${escapeHtml(f.name)} — ${escapeHtml(f.entry)}()</option>`),
+      ];
+      selectRow.innerHTML = `<label style="font-size:13px;color:var(--dim);margin-right:8px">View:</label>
+        <select id="flowSelect">${options.join('')}</select>`;
+      $('flowSelect').value = '0';
+      $('flowSelect').onchange = (e) => {
+        const v = e.target.value;
+        renderMermaid(v === '__overview__' ? data.overview_mermaid : flows[+v].mermaid);
+      };
+      await renderMermaid(flows[0].mermaid);
+    } else {
+      selectRow.innerHTML = '<span class="empty">No API routes detected — showing tech-stack overview.</span>';
+      await renderMermaid(data.overview_mermaid);
     }
   } catch (e) {
     $('mermaidBox').innerHTML = `<div class="empty" style="color:var(--err)">Error loading architecture: ${escapeHtml(e.message)}</div>`;

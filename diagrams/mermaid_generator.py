@@ -12,6 +12,69 @@ single-purpose scripts/apps (the common case for student/portfolio
 projects) are structured, rather than a generic client-server tree.
 """
 
+from diagrams.call_graph import build_flows
+
+# Shape used per leaf category so the "type" of thing (DB vs external API
+# vs a plain internal function) is visually obvious at a glance -- this is
+# the detail students get asked about in a viva ("why is that one a
+# cylinder?" -> "that's the database step").
+LEAF_SHAPE = {
+    "Database": ('[("', '")]'),
+    "External API": ('{{"', '"}}'),
+    "Notification": ('[/"', '"/]'),
+    "Auth Check": ('{"', '"}'),
+    "File I/O": ('[["', '"]]'),
+    "AI / ML Call": ('[["', '"]]'),
+}
+DEFAULT_LEAF_SHAPE = ('["', '"]')
+
+
+def _flow_node_id(prefix: str, index: int) -> str:
+    return f"{prefix}{index}"
+
+
+def generate_endpoint_flow_diagrams(analysis: dict) -> list:
+    """
+    One Mermaid flowchart per detected API route, tracing the actual call
+    sequence (see diagrams/call_graph.py) instead of just listing tech
+    stack categories. Returns a list of
+    {"name": "POST /complaints", "entry": "create_complaint",
+     "file": "...", "mermaid": "flowchart TD\n..."}.
+    """
+    flows = build_flows(analysis)
+    diagrams = []
+
+    for flow in flows:
+        lines = ["flowchart TD", '    User(["User"])']
+        prev_node = "User"
+
+        entry_id = "Entry"
+        lines.append(f'    User --> {entry_id}["{_sanitize(flow["name"])}<br/><i>{_sanitize(flow["entry"])}()</i>"]')
+        prev_node = entry_id
+
+        if not flow["steps"]:
+            lines.append(f'    {prev_node} --> Done["(no further internal calls traced)"]')
+        for i, step in enumerate(flow["steps"]):
+            node_id = _flow_node_id("Step", i)
+            if step["kind"] == "call":
+                open_s, close_s = "[\"", "\"]"
+                label = f'{step["name"]}()'
+            else:
+                open_s, close_s = LEAF_SHAPE.get(step["category"], DEFAULT_LEAF_SHAPE)
+                label = f'{step["category"]}<br/>({step["name"]})'
+            lines.append(f'    {prev_node} --> {node_id}{open_s}{_sanitize(label)}{close_s}')
+            prev_node = node_id
+
+        diagrams.append({
+            "name": flow["name"],
+            "entry": flow["entry"],
+            "file": flow["file"],
+            "mermaid": "\n".join(lines),
+        })
+
+    return diagrams
+
+
 CATEGORY_ORDER = ["ui", "cv", "ml", "data", "viz", "db", "api"]
 CATEGORY_LABELS = {
     "ui": "Interface",

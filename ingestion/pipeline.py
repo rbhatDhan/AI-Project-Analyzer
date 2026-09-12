@@ -29,12 +29,24 @@ def run_pipeline(project_id: str, zip_path: Path) -> dict:
     update_project(project_id, status="chunking")
     all_chunks = []
     all_imports = []
+    all_symbols = []  # (file_path, Symbol) pairs, used to build the call-flow diagrams
     parse_errors = []
     for f in files:
         rel_path = str(f.relative_to(root))
         parsed = parse_file(f, rel_path)
         if parsed is not None:
             all_imports.extend(parsed.imports)
+            for sym in parsed.symbols:
+                all_symbols.append({
+                    "file_path": rel_path,
+                    "type": sym.type,
+                    "name": sym.name,
+                    "parent": sym.parent,
+                    "calls": sym.calls,
+                    "is_route": sym.is_route,
+                    "route_method": sym.route_method,
+                    "route_path": sym.route_path,
+                })
             if parsed.parse_error:
                 parse_errors.append({"file": rel_path, "error": parsed.parse_error})
             chunks = chunk_parsed_file(project_id, parsed)
@@ -49,7 +61,7 @@ def run_pipeline(project_id: str, zip_path: Path) -> dict:
     # Run structure/framework/library detection after parsing so we can use
     # real import statements, not just manifest files (many small/ML/CV
     # projects ship no requirements.txt at all).
-    analysis = detect_project(files, root, all_imports=all_imports)
+    analysis = detect_project(files, root, all_imports=all_imports, all_symbols=all_symbols)
 
     update_project(project_id, status="embedding", chunk_count=len(all_chunks))
     embedder = get_embedding_provider()
