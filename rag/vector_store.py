@@ -16,6 +16,8 @@ from typing import List, Optional
 import faiss
 import numpy as np
 
+from core.config import settings
+
 
 class VectorStore(ABC):
     @abstractmethod
@@ -92,7 +94,97 @@ class FaissVectorStore(VectorStore):
         return True
 
 
+class PgVectorStore(VectorStore):
+    """
+    Supabase Postgres + pgvector backend. Same per-project scoping as
+    FaissVectorStore, but rows live in a shared `chunk_embeddings` table
+    (see supabase/migrations/001_pgvector.sql) instead of a local index file
+    -- required on Vercel, where local disk doesn't persist between
+    invocations.
+
+    Search stays exact (brute-force cosine via `<=>`, filtered by
+    project_id), matching FaissVectorStore's IndexFlatIP -- no behavior
+    change, just a different place the vectors live. This also sidesteps
+    pgvector's ~2000-dimension cap on ANN indexes (ivfflat/hnsw), since
+    gemini-embedding-001 is 3072-dim and we never build one: a WHERE
+    project_id = ... clause already keeps each query to one project's chunks
+    (typically hundreds, not millions), so brute force is plenty fast.
+    """
+
+    def __init__(self, project_id: str, dim: int = 768):
+        self.project_id = project_id
+        self.dim = dim
+        self._conn = None
+
+    def _connection(self):
+        if self._conn is None or self._conn.closed:
+            import psycopg
+            from pgvector.psycopg import register_vector
+            # psycopg (v3) takes the plain postgresql:// URL as-is -- the
+            # "+psycopg" driver suffix in core/db.py is a SQLAlchemy-only
+            # convention and doesn't belong in a raw connection string here.
+            self._conn = psycopg.connect(settings.DATABASE_URL)
+            register_vector(self._conn)  # lets psycopg adapt Python lists <-> the vector type
+        return self._conn
+
+    def add(self, ids: List[str], vectors: List[List[float]], metadatas: List[dict]) -> None:
+        if not vectors:
+            return
+        conn = self._connection()
+        with conn.cursor() as cur:
+            for chunk_id, vector, meta in zip(ids, vectors, metadatas):
+                cur.execute(
+                    """
+                    INSERT INTO chunk_embeddings (project_id, chunk_id, embedding, metadata)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (project_id, chunk_id)
+                    DO UPDATE SET embedding = EXCLUDED.embedding, metadata = EXCLUDED.metadata
+                    """,
+                    (self.project_id, chunk_id, vector, json.dumps(meta)),
+                )
+        conn.commit()
+
+    def search(self, query_vector: List[float], top_k: int = 8) -> List[dict]:
+        conn = self._connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT chunk_id, metadata, 1 - (embedding <=> %s::vector) AS score
+                FROM chunk_embeddings
+                WHERE project_id = %s
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (query_vector, self.project_id, query_vector, top_k),
+            )
+            rows = cur.fetchall()
+        results = []
+        for chunk_id, metadata, score in rows:
+            record = dict(metadata)
+            record["chunk_id"] = chunk_id
+            record["score"] = float(score)
+            results.append(record)
+        return results
+
+    def save(self) -> None:
+        pass  # writes are committed immediately in add(); nothing to flush
+
+    def load(self) -> bool:
+        conn = self._connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM chunk_embeddings WHERE project_id = %s LIMIT 1", (self.project_id,))
+            return cur.fetchone() is not None
+
+
 def get_vector_store(index_dir: Path, dim: int = 768) -> VectorStore:
+    if settings.VECTOR_BACKEND == "pgvector":
+        # index_dir is always workspace/<project_id>/index -- pull the id
+        # back out rather than changing every call site's signature.
+        project_id = Path(index_dir).parent.name
+        store = PgVectorStore(project_id=project_id, dim=dim)
+        store.load()
+        return store
+
     store = FaissVectorStore(index_dir=index_dir, dim=dim)
     store.load()
     return store

@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Optional
 
 
+ROUTE_METHODS = {"get", "post", "put", "patch", "delete", "websocket"}
+
+
 @dataclass
 class Symbol:
     type: str            # "class" | "function" | "method"
@@ -22,6 +25,29 @@ class Symbol:
     parent: Optional[str] = None   # enclosing class name, for methods
     calls: list = field(default_factory=list)   # names this symbol calls
     source: str = ""
+    is_route: bool = False          # True if decorated as an API endpoint
+    route_method: Optional[str] = None   # "get" | "post" | ...
+    route_path: Optional[str] = None     # literal path string, if present
+
+
+def _extract_route_info(node) -> tuple:
+    """
+    Looks at a function/method's decorators for an API-route pattern, e.g.
+    @app.post("/complaints") or @router.get("/projects/{id}"). Works for
+    any object name (app, router, blueprint, ...) since student projects
+    name these differently -- we only match on the HTTP-method attribute.
+    Returns (is_route, method, path) with method/path None if not a route.
+    """
+    for deco in getattr(node, "decorator_list", []):
+        call = deco if isinstance(deco, ast.Call) else None
+        func = call.func if call else deco
+        if isinstance(func, ast.Attribute) and func.attr.lower() in ROUTE_METHODS:
+            path = None
+            if call and call.args and isinstance(call.args[0], ast.Constant):
+                if isinstance(call.args[0].value, str):
+                    path = call.args[0].value
+            return True, func.attr.lower(), path
+    return False, None, None
 
 
 @dataclass
@@ -38,15 +64,35 @@ def _end_lineno(node) -> int:
 
 
 def _extract_calls(node) -> list:
+    # Order matters here: this list is used to reconstruct the actual
+    # sequence of operations for flow diagrams. ast.walk() is breadth-first,
+    # not source order, so we collect (lineno, name) pairs and sort by line
+    # number to recover the real top-to-bottom sequence, then dedupe while
+    # keeping each name's first occurrence position.
+    found = []
+    # Walk each body statement separately (not the whole node) so we don't
+    # pick up decorator calls like @router.post("/ask") as if they were
+    # calls made inside the function.
+    for stmt in node.body:
+        for child in ast.walk(stmt):
+            if isinstance(child, ast.Call):
+                func = child.func
+                name = None
+                if isinstance(func, ast.Name):
+                    name = func.id
+                elif isinstance(func, ast.Attribute):
+                    name = func.attr
+                if name:
+                    found.append((getattr(child, "lineno", 0), name))
+    found.sort(key=lambda t: t[0])
+
     calls = []
-    for child in ast.walk(node):
-        if isinstance(child, ast.Call):
-            func = child.func
-            if isinstance(func, ast.Name):
-                calls.append(func.id)
-            elif isinstance(func, ast.Attribute):
-                calls.append(func.attr)
-    return sorted(set(calls))
+    seen = set()
+    for _, name in found:
+        if name not in seen:
+            seen.add(name)
+            calls.append(name)
+    return calls
 
 
 def parse_python(file_path: Path, rel_path: str) -> ParsedFile:
@@ -80,18 +126,22 @@ def parse_python(file_path: Path, rel_path: str) -> ParsedFile:
             for child in node.body:
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     cstart, cend = child.lineno, _end_lineno(child)
+                    is_route, route_method, route_path = _extract_route_info(child)
                     parsed.symbols.append(Symbol(
                         type="method", name=child.name, parent=node.name,
                         line_start=cstart, line_end=cend,
                         calls=_extract_calls(child),
                         source="\n".join(lines[cstart - 1:cend]),
+                        is_route=is_route, route_method=route_method, route_path=route_path,
                     ))
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             start, end = node.lineno, _end_lineno(node)
+            is_route, route_method, route_path = _extract_route_info(node)
             parsed.symbols.append(Symbol(
                 type="function", name=node.name, line_start=start, line_end=end,
                 calls=_extract_calls(node),
                 source="\n".join(lines[start - 1:end]),
+                is_route=is_route, route_method=route_method, route_path=route_path,
             ))
 
     return parsed

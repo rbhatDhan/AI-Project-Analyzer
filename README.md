@@ -109,7 +109,42 @@ render it, or into any Markdown viewer that supports Mermaid.
 - **Registry**: a flat `workspace/registry.json`, not Postgres — fine for
   local dev, swap for a real DB when you add multi-user support.
 
-## 6. Suggested next slice (spec section 26, items 11–17)
+## 6. Deploying to Vercel (Supabase-backed)
+
+Local dev is untouched — SQLite + FAISS + local disk keep working with an
+empty `.env`. Three env vars switch each layer independently to its
+Supabase-backed equivalent, because Vercel's serverless functions have a
+read-only, ephemeral filesystem (nothing written to local disk survives
+between invocations):
+
+1. **Registry** — create a Supabase project, then set `DATABASE_URL` to its
+   Postgres connection string (Project Settings → Database → Connection
+   string; use the **Transaction pooler** URI, not the direct connection —
+   serverless opens a new connection per invocation and Postgres has a
+   connection cap). Tables are created automatically on first run via
+   `init_db()`, same as SQLite locally.
+2. **Vector store** — run `supabase/migrations/001_pgvector.sql` once in the
+   Supabase SQL editor, then set `VECTOR_BACKEND=pgvector`.
+3. **Uploaded zips** — create a Storage bucket (name matches
+   `SUPABASE_STORAGE_BUCKET`, default `project-zips`), set
+   `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` (Project Settings → API — the
+   *service_role* key, not anon, since uploads happen server-side) and
+   `STORAGE_BACKEND=supabase`.
+
+See `.env.example` for all the variable names.
+
+**Known limitation worth knowing before you deploy:** ingestion
+(`ingestion/pipeline.py`) currently runs via FastAPI's `BackgroundTasks`,
+which assumes the process keeps running after the HTTP response is sent.
+Vercel doesn't guarantee that — the function's execution context can be
+frozen once the response goes out. Small projects will likely finish inside
+Vercel's function timeout window anyway (raise `maxDuration` in
+`vercel.json` if needed, up to 300s on Pro), but for anything larger you'll
+want to move ingestion to a queue (e.g. a Vercel Cron endpoint that pulls
+one `queued` project at a time from the registry) instead of relying on
+`BackgroundTasks` finishing.
+
+## 7. Suggested next slice (spec section 26, items 11–17)
 
 In order of dependency:
 1. **Dependency/knowledge graph** (`graph/knowledge_graph.py` with

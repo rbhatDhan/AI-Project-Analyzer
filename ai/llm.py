@@ -29,7 +29,15 @@ functions, or behavior that isn't shown.
 name and line range, e.g. "backend/services/authService.js (loginUser, lines 20-58)".
 - If the retrieved context does not contain enough information to answer confidently, \
 say: "I could not verify this from the uploaded project." Do not guess.
-- Keep answers concise and technical, suitable for someone who wrote the code."""
+- Keep answers concise and technical, suitable for someone who wrote the code.
+
+Formatting (your output is rendered as markdown in a chat UI):
+- Use short paragraphs. Break multi-part answers into headers (###) or bold lead-ins \
+for each distinct section instead of one dense block.
+- Use bullet or numbered lists for anything enumerable (steps, files, causes).
+- Put all code, file snippets, and identifiers referenced inline in backticks or \
+fenced code blocks with a language tag, never as plain unformatted text.
+- Avoid long unbroken paragraphs -- prefer several short ones over one long one."""
 
 
 def _format_context(chunks: list) -> str:

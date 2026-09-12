@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
+from core.config import settings
 from core.workspace import create_project, get_project, list_projects, project_dir, update_project
 from ingestion.pipeline import run_pipeline
 from ingestion.zip_extractor import ZipValidationError
@@ -12,6 +13,13 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 def _process_in_background(project_id: str, zip_path: Path):
     try:
+        if settings.STORAGE_BACKEND == "supabase":
+            # zip_path here is a local staging path, not the persisted copy --
+            # the persisted copy already went to the Supabase bucket in
+            # upload_project(). Re-download it into /tmp for this run so
+            # run_pipeline() can extract from local disk as before.
+            from core.storage import download_zip
+            download_zip(project_id, zip_path)
         run_pipeline(project_id, zip_path)
     except ZipValidationError as e:
         update_project(project_id, status="failed", error=str(e))
@@ -30,6 +38,13 @@ async def upload_project(background_tasks: BackgroundTasks, file: UploadFile = F
 
     with open(raw_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
+
+    if settings.STORAGE_BACKEND == "supabase":
+        # This is the copy that actually needs to survive -- Vercel's local
+        # disk won't persist raw_path between this request and whatever
+        # invocation runs _process_in_background.
+        from core.storage import upload_zip
+        upload_zip(project_id, raw_path)
 
     update_project(project_id, status="queued", original_filename=file.filename)
     background_tasks.add_task(_process_in_background, project_id, raw_path)

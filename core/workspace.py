@@ -1,54 +1,36 @@
 """
-Manages per-project workspace folders and a small JSON registry so we don't
-re-analyze the same project on every request. This is deliberately simple
-(a JSON file, not Postgres) for the MVP -- swap later without touching
-callers, since everything goes through these functions.
+Manages per-project workspace folders and the project registry. The
+registry now lives in a real SQLite database (core/db.py + core/models.py)
+instead of a single JSON file that got fully re-read/re-written on every
+update -- same public functions as before, so nothing calling into this
+module (api/projects.py, api/architecture.py, ingestion/pipeline.py) needs
+to change.
 """
-import json
-import os
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from core.config import settings
+from core.db import get_session, init_db
+from core.models import ProjectRecord
 
-REGISTRY_FILE = "registry.json"
-
-
-def _registry_path() -> Path:
-    return Path(settings.WORKSPACE_DIR) / REGISTRY_FILE
-
-
-def _load_registry() -> dict:
-    path = _registry_path()
-    if not path.exists():
-        return {}
-    with open(path, "r") as f:
-        return json.load(f)
-
-
-def _save_registry(registry: dict) -> None:
-    path = _registry_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(registry, f, indent=2, default=str)
+init_db()
 
 
 def create_project() -> str:
     project_id = uuid.uuid4().hex[:12]
-    project_dir = Path(settings.WORKSPACE_DIR) / project_id
-    (project_dir / "raw").mkdir(parents=True, exist_ok=True)
-    (project_dir / "extracted").mkdir(parents=True, exist_ok=True)
-    (project_dir / "index").mkdir(parents=True, exist_ok=True)
+    project_dir_path = Path(settings.WORKSPACE_DIR) / project_id
+    (project_dir_path / "raw").mkdir(parents=True, exist_ok=True)
+    (project_dir_path / "extracted").mkdir(parents=True, exist_ok=True)
+    (project_dir_path / "index").mkdir(parents=True, exist_ok=True)
 
-    registry = _load_registry()
-    registry[project_id] = {
-        "project_id": project_id,
-        "status": "created",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    _save_registry(registry)
+    session = get_session()
+    try:
+        record = ProjectRecord(project_id=project_id, status="created")
+        session.add(record)
+        session.commit()
+    finally:
+        session.close()
     return project_id
 
 
@@ -65,18 +47,33 @@ def index_dir(project_id: str) -> Path:
 
 
 def update_project(project_id: str, **fields: Any) -> dict:
-    registry = _load_registry()
-    if project_id not in registry:
-        raise KeyError(f"Unknown project_id: {project_id}")
-    registry[project_id].update(fields)
-    registry[project_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _save_registry(registry)
-    return registry[project_id]
+    session = get_session()
+    try:
+        record = session.get(ProjectRecord, project_id)
+        if record is None:
+            raise KeyError(f"Unknown project_id: {project_id}")
+        for key, value in fields.items():
+            setattr(record, key, value)
+        session.commit()
+        session.refresh(record)
+        return record.to_dict()
+    finally:
+        session.close()
 
 
 def get_project(project_id: str) -> Optional[dict]:
-    return _load_registry().get(project_id)
+    session = get_session()
+    try:
+        record = session.get(ProjectRecord, project_id)
+        return record.to_dict() if record else None
+    finally:
+        session.close()
 
 
 def list_projects() -> list:
-    return list(_load_registry().values())
+    session = get_session()
+    try:
+        records = session.query(ProjectRecord).order_by(ProjectRecord.created_at.desc()).all()
+        return [r.to_dict() for r in records]
+    finally:
+        session.close()

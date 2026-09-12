@@ -192,7 +192,7 @@ def detect_libraries_from_imports(all_imports: list) -> dict:
     return {cat: sorted(labels) for cat, labels in by_category.items()}
 
 
-def detect_project(files: list, root: Path, all_imports: list = None) -> dict:
+def detect_project(files: list, root: Path, all_imports: list = None, all_symbols: list = None) -> dict:
     result = {
         "languages": detect_languages(files, root),
         "structure": detect_structure(files, root),
@@ -206,5 +206,10 @@ def detect_project(files: list, root: Path, all_imports: list = None) -> dict:
         # that field (e.g. older callers) still sees Streamlit/Flask/etc.
         ui_labels = libraries.get("ui", [])
         result["frameworks"] = sorted(set(result["frameworks"]) | set(ui_labels))
+    if all_symbols:
+        # Kept as-is (file_path, type, name, parent, calls, is_route, ...)
+        # so diagrams/call_graph.py can build per-endpoint flow diagrams
+        # from real function-call relationships, not just detected libraries.
+        result["symbols"] = all_symbols
     return result
 
